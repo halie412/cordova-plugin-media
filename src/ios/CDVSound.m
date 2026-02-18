@@ -27,8 +27,11 @@
 #define FILE_PREFIX @"file://"
 
 @implementation CDVSound
-
+/* 2026feb17 cambiado para no romper videos
 BOOL keepAvAudioSessionAlwaysActive = NO;
+*/
+// 2026feb17 para que funcione con videos
+BOOL keepAvAudioSessionAlwaysActive = YES;
 
 @synthesize soundCache, avSession, currMediaId, statusCallbackId;
 
@@ -747,6 +750,8 @@ BOOL keepAvAudioSessionAlwaysActive = NO;
                 audioFile.recorder = nil;
             }
             // get the audioSession and set the category to allow recording when device is locked or ring/silent switch engaged
+            /*
+            2026feb17 cambiado por error que detiene videos
             if ([weakSelf hasAudioSession]) {
                 if (![weakSelf.avSession.category isEqualToString:AVAudioSessionCategoryPlayAndRecord]) {
                     [weakSelf.avSession setCategory:AVAudioSessionCategoryRecord error:nil];
@@ -760,6 +765,37 @@ BOOL keepAvAudioSessionAlwaysActive = NO;
                     return;
                 }
             }
+            */
+            // 2026feb17 agregado para evitar cambio de modo
+            if ([weakSelf hasAudioSession]) {
+                 NSError* catErr = nil;
+             
+                 // Permite micrófono SIN cortar el audio/video del WebView (mezcla)
+                 AVAudioSessionCategoryOptions opts = AVAudioSessionCategoryOptionMixWithOthers;
+             
+                 // Opcional (no afecta calidad, pero evita rutas raras):
+                 // opts |= AVAudioSessionCategoryOptionDefaultToSpeaker;
+             
+                 [weakSelf.avSession setCategory:AVAudioSessionCategoryPlayAndRecord
+                                     withOptions:opts
+                                           error:&catErr];
+             
+                 if (catErr) {
+                     errorMsg = [NSString stringWithFormat:@"Unable to set audio session category: %@", catErr.localizedFailureReason ?: catErr.localizedDescription];
+                     [weakSelf onStatus:MEDIA_ERROR mediaId:mediaId param:[self createAbortError:errorMsg]];
+                     return;
+                 }
+             
+                 // No necesitas “voiceChat” ni nada si te da igual la calidad:
+                 [weakSelf.avSession setMode:AVAudioSessionModeDefault error:nil];
+             
+                 if (![weakSelf.avSession setActive:YES error:&error]) {
+                     errorMsg = [NSString stringWithFormat:@"Unable to record audio: %@", [error localizedFailureReason]];
+                     [weakSelf onStatus:MEDIA_ERROR mediaId:mediaId param:[self createAbortError:errorMsg]];
+                     return;
+                 }
+             }
+            
 
             // create a new recorder for each start record
             bool isWav=[[audioFile.resourcePath pathExtension] isEqualToString:@"wav"];
